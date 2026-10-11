@@ -4,19 +4,14 @@ Created on Tue Jun  2 13:49:35 2020
 
 @author: John
 """
-# import sys
-# from PyQt5.QtWidgets import QApplication
-# from PyQt5.Core import QUrl
-# from PyQt5.QtWebkit import QWebPage
-# import urllib1 , urllib2
 
 from bs4 import BeautifulSoup
-import csv
 import requests
 import pandas as pd
-name='empresas-titulares-de-licenca-de-mediacao-imobiliaria'
-Tabela=[]
-def table(x,y):  
+import re
+
+def fetch_page(x, y, name, timeout=10):
+    """Fetches a page of data from the API."""
     cookies = {
         'PHPSESSID': '55kpb8ce7nrvhrlj2nnjmepdb3',
     }
@@ -40,62 +35,68 @@ def table(x,y):
       'id_object': '25',
       'pesquisar': 'true',
       'loadTable': '{}'.format(x),
-          'pageSearch': '{}'.format(y)
+      'pageSearch': '{}'.format(y)
     }
     
-    r = requests.post('http://www.impic.pt/impic/ajax/call/impic_api/consultar/ajax/43', headers=headers, cookies=cookies, data=data)
-    
-    content=(r.text)
+    r = requests.post(
+        'http://www.impic.pt/impic/ajax/call/impic_api/consultar/ajax/43',
+        headers=headers,
+        cookies=cookies,
+        data=data,
+        timeout=timeout
+    )
+    r.raise_for_status()
+    return r.text
 
-    soup = BeautifulSoup(content, "html5lib")
+def extract_table(html_content):
+    """Extracts rows from an HTML table."""
+    soup = BeautifulSoup(html_content, "html5lib")
+    table = soup.table
     
-    
-    table=soup.table
-    table_row= table.find_all("tr")
-
-    for tr  in table_row:
-        td = tr.find_all("td")
-        row = [i.text for i in td]
-        Tabela.append(row)
+    if not table:
+        return []
         
-# Numero_Paginas=[]
-# Numero_Paginas=[int(item) for item in input("Escreva a começar e o numero a acabar ex:(1,2)(1,357):    ").split()]
+    table_row = table.find_all("tr")
+    extracted_rows = []
+    
+    for tr in table_row:
+        td = tr.find_all(["td", "th"])
+        if not td:
+            continue
+        row = [i.text.strip() for i in td]
+        extracted_rows.append(row)
+        
+    return extracted_rows
 
-for i in range(1,439):
-    table(1,i)
-    print(i,"/439")
-teste=Tabela    
-df=pd.DataFrame(teste)
+def extract_license(text):
+    """Extracts a license number from text using regex."""
+    # Example regex pattern for license numbers like 12345-AMI
+    pattern = r'(\d+-AMI)'
+    match = re.search(pattern, text)
+    if match:
+        return match.group(1)
+    return None
 
-df.to_excel("{}.xlsx".format(name))  
+def export_data(data, filename):
+    """Exports data to an Excel file."""
+    df = pd.DataFrame(data)
+    df.to_excel(filename, index=False)
 
+def main():
+    name = 'empresas-titulares-de-licenca-de-mediacao-imobiliaria'
+    Tabela = []
+    
+    for i in range(1, 439):
+        try:
+            print(f"{i}/439")
+            html_content = fetch_page(1, i, name)
+            rows = extract_table(html_content)
+            Tabela.extend(rows)
+        except Exception as e:
+            print(f"Error fetching page {i}: {e}")
+            
+    export_data(Tabela, f"{name}.xlsx")
+    print(f"Exported to {name}.xlsx")
 
-# with open("test1.csv","a",newline="") as fp:
-#     a = csv.writer(fp,delimeter=",")
-#     a.writerows(Tabela)
-#     for row in a:
-#         stop=0
-
-
-# 
-
-# if 
-# request =requests.get("http://www.impic.pt/impic//pt-pt/consultar/empresas-titulares-de-alvara-de-empreiteiro-de-obras-publicas")
-# soup = bs.BeautifulStoneSoup(request.content)
-
-# class Client(QWebPage):
-#     def _init_ (self,url):
-#         self.app = QApplication(sys.argv)
-#         self.loadFinished.connect(self.on_page_load)
-#         self.mainFrame().load(QUrl(url))
-#         self.app.exec_()
-#     def on_page_load(self):
-#         self.app.quit()
-# url = "http://www.impic.pt/impic//pt-pt/consultar/empresas-titulares-de-alvara-de-empreiteiro-de-obras-publicas"
-# client_response=Client(url)
-# source= client_response.mainFrame().toHtml()
-
-# # source = urllib.request.urlopen("http://www.impic.pt/impic//pt-pt/consultar/empresas-titulares-de-alvara-de-empreiteiro-de-obras-publicas")
-# soup=bs.BeautifulStoneSoup(source, "lxml")
-# js_test = soup.find("p", class_="jstest")
-# print(js_test.txt)
+if __name__ == "__main__":
+    main()
